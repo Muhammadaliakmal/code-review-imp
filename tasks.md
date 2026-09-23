@@ -13,17 +13,17 @@ Cut list if behind schedule, in this order: **FR-11 → FR-7 → agent-level hoo
   - Verify: unit test with a 2-file fixture diff and an empty-string diff.
   - Files: `desk/diff.py`, `tests/test_diff.py`
 
-- [ ] **T2 — `ReviewContext` + context-reading tool (FR-2)** *(context dataclass + ruleset loader done; `@function_tool` wrapper pending)*
+- [x] **T2 — `ReviewContext` + context-reading tool (FR-2)**
   - Acceptance: `ReviewContext` dataclass matches `plan.md` exactly; a `read_ruleset` tool reads `ruleset_id`/`repo` only via `RunContextWrapper`, takes no repo/ruleset string as a literal parameter; generated tool schema has no such parameter.
   - Verify: print the tool's generated JSON schema and confirm no wrapper field; `grep -ri` the assembled prompt string for the repo name — zero hits.
   - Files: `desk/context.py`, `desk/tools.py`
 
-- [ ] **T3 — `Finding` model + typed reviewer output (FR-3)**
+- [x] **T3 — `Finding` model + typed reviewer output (FR-3)**
   - Acceptance: `Finding` Pydantic model matches `plan.md`; `BaseReviewer.output_type = list[Finding]`; a manual run against a sample diff returns a `RunResult` whose `final_output` is a plain Python list.
   - Verify: script that runs the reviewer once, prints `type(result.final_output)`, counts criticals with `[f for f in result.final_output if f.severity == "critical"]`, and prints the raw generated schema showing the wrapper key.
   - Files: `desk/agents.py`, `desk/models.py`
 
-- [ ] **T4 — Per-run dynamic instructions (FR-4)**
+- [x] **T4 — Per-run dynamic instructions (FR-4)**
   - Acceptance: instructions function takes `(ruleset_text, language, strictness)` and returns a shorter prompt when `strictness == "strict"`.
   - Verify: call the instructions builder with two different `ReviewContext`s, print both resolved strings, confirm they visibly differ and the strict one is shorter.
   - Files: `desk/prompts.py`

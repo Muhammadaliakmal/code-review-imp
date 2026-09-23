@@ -86,7 +86,7 @@ Produced by the diff-splitting step before any model call — a pure function, n
 
 ## Forced tool, failure handling, ceiling (FR-9)
 
-- `SecurityReviewer`'s `ModelSettings(tool_choice="required")` (or equivalent) on first turn forces the ruleset call.
+- `SecurityReviewer`'s `ModelSettings(tool_choice="read_ruleset")` names the tool directly — `"required"` alone only forces *some* tool call, not this specific one.
 - `read_diff` and `split_diff` wrap their bodies in `try/except`, returning a message string on failure rather than propagating.
 - Turn ceiling: `max_turns=8` per `Runner.run` call — generous enough for read-ruleset + reason + respond, tight enough to catch a reviewer looping on tool calls. `MaxTurnsExceeded` is caught at the Desk level and reported as a partial review with whatever findings had been produced.
 
@@ -97,7 +97,17 @@ Produced by the diff-splitting step before any model call — a pure function, n
 
 ## Custom runner and ledger (FR-11)
 
-A subclass of `Runner` (or a wrapping function used everywhere in place of `Runner.run`) that, on completion of each `Runner.run` call, appends the ledger line above to `ledger.jsonl`. Registered once at startup (module import time), so no agent definition references it — removing the registration call is the only change needed to disable the ledger.
+`agents.run.AgentRunner` (what `Runner.run` delegates to) is explicitly marked experimental and not meant to be subclassed by SDK code comments — so the "custom runner" here is a thin wrapper function, not a `Runner` subclass:
+
+```python
+async def run_and_log(agent, input, *, context=None, **kwargs) -> RunResult:
+    started = time.monotonic()
+    result = await Runner.run(agent, input, context=context, **kwargs)
+    append_ledger({...})  # ms = (time.monotonic() - started) * 1000
+    return result
+```
+
+Every orchestrator call site uses `run_and_log(...)` in place of `Runner.run(...)`. This still satisfies FR-11's done-conditions: "registered once" = the orchestrator importing `run_and_log`; "no agent definition mentions it" = true, agents never reference logging; "removing the registration is the only change to disable it" = swapping the orchestrator's calls back to bare `Runner.run`.
 
 ## Chainlit UI (FR-12)
 

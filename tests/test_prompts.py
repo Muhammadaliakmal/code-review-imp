@@ -1,23 +1,21 @@
 from desk.prompts import build_instructions
 
-RULESET = "- Flag hardcoded credentials.\n"
-
 
 def test_normal_and_strict_prompts_visibly_differ():
-    normal = build_instructions("security", RULESET, "python", "normal")
-    strict = build_instructions("security", RULESET, "python", "strict")
+    normal = build_instructions("security", "python", "normal")
+    strict = build_instructions("security", "python", "strict")
 
     assert normal != strict
     assert len(strict) < len(normal)
 
 
-def test_repo_name_never_appears_in_prompt():
-    prompt = build_instructions("security", RULESET, "python", "normal")
+def test_repo_specific_details_never_baked_into_prompt():
+    prompt = build_instructions("security", "python", "normal")
 
     assert "acme-corp-internal-repo" not in prompt
 
 
-def test_ruleset_text_is_included():
-    prompt = build_instructions("style", RULESET, "python", "normal")
+def test_prompt_tells_reviewer_to_call_ruleset_tool():
+    prompt = build_instructions("style", "python", "normal")
 
-    assert "hardcoded credentials" in prompt
+    assert "read_ruleset" in prompt
