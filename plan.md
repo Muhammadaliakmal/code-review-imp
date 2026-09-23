@@ -6,15 +6,17 @@ Architecture for the spec in `spec.md`, under the rules in `constitution.md`. Bu
 
 | Agent | Role | Model | Wiring |
 |---|---|---|---|
-| `BaseReviewer` | Not run directly — the template the three reviewers are cloned from. Holds the shared tool set (ruleset reader, diff-chunk reader) and shared output type (`list[Finding]`). | `gemini-2.5-flash` | — |
-| `SecurityReviewer` | Clone of `BaseReviewer`. Instructions tuned for security issues (secrets, injection, auth). Forced to call the ruleset tool (FR-9). | `gemini-2.5-flash` | Fanned out by the Desk |
-| `TestsReviewer` | Clone of `BaseReviewer`. Instructions tuned for missing/weak test coverage. | `gemini-2.5-flash` | Fanned out by the Desk |
-| `StyleReviewer` | Clone of `BaseReviewer`. Instructions tuned for style/convention violations. | `gemini-2.5-flash` | Fanned out by the Desk |
-| `MergeSpecialist` | Deduplicates overlapping findings across the three lists, orders by severity (`critical` > `major` > `minor`). | `gemini-2.5-flash` (cheap — small structured input) | Exposed to the Desk via `as_tool()` — the Desk calls it and keeps the conversation |
-| `RemediationSpecialist` | Given the merged findings and the diff, proposes a patch for the triggering critical security finding, talking directly to the user. | `gemini-2.5-flash` | Reached via `handoff()` from the Desk — conversation ownership transfers |
+| `BaseReviewer` | Not run directly — the template the three reviewers are cloned from. Holds the shared tool set (ruleset reader, diff-chunk reader) and shared output type (`list[Finding]`). | `gpt-4o-mini` | — |
+| `SecurityReviewer` | Clone of `BaseReviewer`. Instructions tuned for security issues (secrets, injection, auth). Forced to call the ruleset tool (FR-9). | `gpt-4o-mini` | Fanned out by the Desk |
+| `TestsReviewer` | Clone of `BaseReviewer`. Instructions tuned for missing/weak test coverage. | `gpt-4o-mini` | Fanned out by the Desk |
+| `StyleReviewer` | Clone of `BaseReviewer`. Instructions tuned for style/convention violations. | `gpt-4o-mini` | Fanned out by the Desk |
+| `MergeSpecialist` | Deduplicates overlapping findings across the three lists, orders by severity (`critical` > `major` > `minor`). | `gpt-4o-mini` (cheap — small structured input) | Exposed to the Desk via `as_tool()` — the Desk calls it and keeps the conversation |
+| `RemediationSpecialist` | Given the merged findings and the diff, proposes a patch for the triggering critical security finding, talking directly to the user. | `gpt-4o-mini` | Reached via `handoff()` from the Desk — conversation ownership transfers |
 | `Desk` (orchestrator) | Top-level agent/entry point. Splits the diff, fans the three reviewers out concurrently via `asyncio.gather`, calls `MergeSpecialist` as a tool, checks for a critical security finding and hands off to `RemediationSpecialist` if present, runs the output guardrail, renders the footer. | — (orchestration only, no independent generation) | Owns the run |
 
 Clone relationship: `SecurityReviewer = BaseReviewer.clone(instructions=..., model_settings=...)`, same for `TestsReviewer` / `StyleReviewer`. Shared: tools, `output_type`, the underlying model family. Own: `instructions` (built per FR-4), `model_settings` (e.g. `temperature` tuned per reviewer).
+
+**Handoff-decision reliability (found during live testing):** the Desk was initially instructed to decide the handoff purely by reading the merged findings' text and judging severity itself. Against `gpt-4o-mini` this was unreliable -- it escalated to a handoff even when no finding was literally `critical`, because a `minor`/`major` finding's *wording* ("could lead to... security issues") read as alarming regardless of its severity field. Fix: the orchestrator runs `MergeSpecialist` once itself (in addition to the Desk's own required `merge_findings` tool call), computes `has_critical_security_finding` in Python from the real `Finding.severity` values, and injects that as a `PRE-COMPUTED RESULT` directive at the top of the Desk's input. The Desk is instructed to trust that literal directive rather than re-deriving the judgment from prose. This is a general pattern worth naming: when a decision needs to be exactly reliable, compute it in code from structured data and hand the model the answer, rather than asking a small model to perform exact-match logic over free text.
 
 ## Concurrency (FR-5)
 

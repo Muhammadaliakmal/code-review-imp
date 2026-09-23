@@ -15,7 +15,7 @@ This is a pipeline, not a conversational agent: it fans out (three reviewers run
 ### Phase 1 — Intake and one reviewer
 
 **FR-1 — Diff in, split by file.**
-The Desk reads a unified diff from a path given on the command line and splits it into per-file chunks before any model sees it. Model: `gemini-2.5-flash`, configured on the agent. Entry point is `async`.
+The Desk reads a unified diff from a path given on the command line and splits it into per-file chunks before any model sees it. Model: `gpt-4o-mini` (substituted for the source brief's `gemini-2.5-flash` -- see constitution.md §1), configured on the agent. Entry point is `async`.
 - Done when: a two-file diff yields two chunks; an empty or malformed diff produces a reported message, not a traceback; no code sets a global default client.
 
 **FR-2 — Repository rules live in context, not the prompt.**

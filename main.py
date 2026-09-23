@@ -4,7 +4,7 @@ import sys
 from dotenv import load_dotenv
 
 from desk.agents import build_agents
-from desk.config import build_gemini_model, configure_tracing
+from desk.config import configure_openai, configure_tracing
 from desk.context import ReviewContext
 from desk.orchestrator import review_diff
 
@@ -17,7 +17,7 @@ async def main() -> None:
     strictness = "strict" if "--strict" in sys.argv else "normal"
 
     configure_tracing()
-    model = build_gemini_model()
+    model = configure_openai()
     agents = build_agents(model)
 
     context = ReviewContext(

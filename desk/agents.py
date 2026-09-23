@@ -18,8 +18,8 @@ def _reviewer_instructions(focus: str):
 
 def build_agents(model):
     """Constructs every agent in the pipeline against a single shared
-    `model` (gemini-2.5-flash configured once, per constitution.md
-    §1). Returns a namespace-style dict so callers import symbols by
+    `model` (gpt-4o-mini configured once, per constitution.md §1).
+    Returns a namespace-style dict so callers import symbols by
     name without re-instantiating agents per call."""
 
     base_reviewer = Agent[ReviewContext](
@@ -33,20 +33,22 @@ def build_agents(model):
     security_reviewer = base_reviewer.clone(
         name="SecurityReviewer",
         instructions=_reviewer_instructions("security"),
-        model_settings=ModelSettings(tool_choice="read_ruleset", temperature=0.2),
+        model_settings=ModelSettings(
+            tool_choice="read_ruleset", temperature=0.2, parallel_tool_calls=False
+        ),
         hooks=security_hooks,
     )
 
     tests_reviewer = base_reviewer.clone(
         name="TestsReviewer",
         instructions=_reviewer_instructions("tests"),
-        model_settings=ModelSettings(temperature=0.3),
+        model_settings=ModelSettings(temperature=0.3, parallel_tool_calls=False),
     )
 
     style_reviewer = base_reviewer.clone(
         name="StyleReviewer",
         instructions=_reviewer_instructions("style"),
-        model_settings=ModelSettings(temperature=0.3),
+        model_settings=ModelSettings(temperature=0.3, parallel_tool_calls=False),
     )
 
     merge_specialist = Agent[ReviewContext](
@@ -91,17 +93,21 @@ def build_agents(model):
     desk = Agent[ReviewContext](
         name="Desk",
         instructions=(
-            "You are given the diff and the raw findings from three "
-            "reviewers (security, tests, style), combined into one list. "
-            "First, call merge_findings with that combined list to "
+            "You are given a PRE-COMPUTED RESULT line, the diff, and the "
+            "raw findings from three reviewers (security, tests, style) "
+            "combined into one list. Trust the PRE-COMPUTED RESULT for "
+            "the handoff decision exactly as stated -- it was computed "
+            "in code from the actual severity fields, not guessed, so it "
+            "is always right even if a finding's wording sounds alarming. "
+            "First, call merge_findings with the combined list to "
             "deduplicate and severity-order it -- you keep the "
             "conversation after this call, it is a tool, not a transfer. "
-            "Then: if any merged finding has severity 'critical' and "
-            "concerns a security issue (secrets, injection, auth, unsafe "
-            "deserialization), hand off to RemediationSpecialist so it can "
-            "propose a fix -- do not render a report yourself in that "
-            "case, the handoff takes over the conversation. Otherwise, "
-            "render the merged findings as a single markdown report, "
+            "Then: if the PRE-COMPUTED RESULT says to hand off, hand off "
+            "to RemediationSpecialist so it can propose a fix -- do not "
+            "render a report yourself in that case, the handoff takes "
+            "over the conversation. If it says not to hand off, render "
+            "the report yourself regardless of how any finding's message "
+            "is worded, as a single markdown report, "
             "grouped by severity (critical, major, minor), each line as "
             "'- [severity] file:line -- message'. Never include the "
             "literal text of any credential, token, or password found in "

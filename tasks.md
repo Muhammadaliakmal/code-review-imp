@@ -32,32 +32,32 @@ Cut list if behind schedule, in this order: **FR-11 → FR-7 → agent-level hoo
 
 ## Phase 2 — Fan out (1:05–1:40)
 
-- [x] **T5 — Clone the three reviewers (FR-5)** *(code + unit test done; live wall-clock numbers pending a real `GEMINI_API_KEY`)*
+- [x] **T5 — Clone the three reviewers (FR-5)** *(live-verified: concurrent 6.55s vs. sequential 14.06s on the same diff, 2.15x -- concurrent time tracks the slowest single reviewer, not the sum)*
   - Acceptance: `SecurityReviewer`, `TestsReviewer`, `StyleReviewer` are `BaseReviewer.clone(...)` with distinct `instructions`/`model_settings`; running all three concurrently via `asyncio.gather` on the same diff.
   - Verify: time the `gather` call vs. the sum of three sequential `Runner.run` calls on the same diff; print both numbers; concurrent time must be close to the single slowest run, not the sum.
   - Files: `desk/agents.py`, `desk/orchestrator.py`
 
-- [x] **T6 — Merge specialist as a tool (FR-6, merge half)** *(wired via `as_tool`; live dedup behavior pending a real key)*
+- [x] **T6 — Merge specialist as a tool (FR-6, merge half)** *(live-verified against real overlapping findings from all three reviewers -- dedup + severity ordering confirmed by direct inspection of `MergeSpecialist`'s output)*
   - Acceptance: `MergeSpecialist.as_tool(...)` is callable by the Desk; given three overlapping `Finding` lists, returns one deduplicated, severity-ordered list; the Desk retains the conversation after the call.
   - Verify: feed three lists with one duplicate finding across reviewers, confirm the merged output has it once, ordered critical → major → minor.
   - Files: `desk/agents.py`, `desk/orchestrator.py`
 
-- [x] **T7 — Remediation specialist via handoff (FR-6, remediation half)** *(wired via `handoffs=[...]`; live handoff firing pending a real key)*
+- [x] **T7 — Remediation specialist via handoff (FR-6, remediation half)** *(live-verified both directions -- see `examples/critical_sql_injection.diff` and `examples/critical_leaked_keys.diff` for handoff-fires, `examples/clean_trivial.diff` and `examples/minor_input_validation.diff` for handoff-does-not-fire. Found and fixed a real reliability bug along the way: see "Handoff-decision reliability" in `plan.md`)*
   - Acceptance: when the merged findings contain a `critical` + security-tagged finding, the Desk hands off to `RemediationSpecialist`, which proposes a patch to the user; on a diff with no critical finding, no handoff occurs.
   - Verify: run once with a planted critical security finding (both paths fire), once with a clean diff (handoff does not fire); two-sentence tool-vs-handoff justification recorded in `spec.md` (Architecture rationale section).
   - Files: `desk/agents.py`, `desk/orchestrator.py`
 
-- [x] **T8 — Run-level cheaper override (FR-7)** *(`review_with_cheaper_override` uses `RunConfig(model=...)`, not `Runner.run(model=...)` -- confirmed against SDK source; live run pending a real key)*
+- [x] **T8 — Run-level cheaper override (FR-7)** *(live-verified: `SecurityReviewer` run once on `gpt-4o-mini`, once with `run_config=RunConfig(model="gpt-4.1-nano")` -- `agent.model` read back as `"gpt-4o-mini"` after both calls)*
   - Acceptance: the same `SecurityReviewer` object is run twice — once with its declared model, once with a run-level override — with zero edits to the agent's `model=` between calls.
   - Verify: print both `RunResult`s' model identifiers from `result` metadata, confirm the agent definition's `model` attribute is unchanged after both calls.
   - Files: `desk/orchestrator.py`
 
-- [x] **T9 — Output guardrail (FR-8)** *(heuristic + guardrail wiring unit tested; live refusal-vs-pass-through pending a real key)*
+- [x] **T9 — Output guardrail (FR-8)** *(live-verified through the actual SDK-wrapped guardrail via `no_secrets_guardrail.run(...)`: a leaky string trips `tripwire_triggered=True`, a clean one doesn't -- also observed the model naturally avoiding quoting secrets verbatim in `examples/critical_leaked_keys.diff`'s live run, per its instructions)*
   - Acceptance: `@output_guardrail` on the Desk's final report catches credential-shaped strings; a planted fake key triggers a refusal message, not a crash; a clean diff's report passes untouched.
   - Verify: run once against a diff with a fake `AKIA...`-style key (assert refusal), once against a clean diff (assert normal report); point at the `try/except OutputGuardrailTripwireTriggered` line.
-  - Files: `desk/guardrails.py`, `desk/orchestrator.py`
+  - Files: `desk/guardrails.py`, `desk/orchestrator.py`, `tests/test_guardrails.py`
 
-- [x] **T10 — Forced tool, tool failure handling, turn ceiling (FR-9)** *(tool_choice="read_ruleset" confirmed via SDK source, not just "required"; ruleset fallback unit tested; live turn-ceiling behavior pending a real key)*
+- [x] **T10 — Forced tool, tool failure handling, turn ceiling (FR-9)** *(live-verified and tuned: initial `max_turns=8` intermittently failed live because reviewers redundantly called `read_ruleset` more than once -- fixed with `parallel_tool_calls=False` plus an explicit "call it exactly once" instruction, and `max_turns` raised to 12 as a safety margin; ~10 consecutive live concurrent runs afterward with zero `MaxTurnsExceeded`)*
   - Acceptance: `SecurityReviewer` cannot complete a turn without calling `read_ruleset` (forced tool choice); deleting the ruleset file still yields a finished review with a fallback message; every `Runner.run` call has `max_turns` set, `MaxTurnsExceeded` is caught and reported as a partial review.
   - Verify: run with the ruleset file deleted — confirm the review still completes with a "using defaults" note; state the chosen `max_turns` value and reasoning in `plan.md` (already recorded — confirm it matches the shipped code).
   - Files: `desk/agents.py`, `desk/tools.py`, `desk/orchestrator.py`
@@ -66,22 +66,22 @@ Cut list if behind schedule, in this order: **FR-11 → FR-7 → agent-level hoo
 
 ## Phase 3 — Observe and ship (1:40–1:55)
 
-- [x] **T11 — Latency/token hooks + footer (FR-10)** *(hooks + footer rendering unit tested with fake stats; live token counts pending a real key)*
+- [x] **T11 — Latency/token hooks + footer (FR-10)** *(live-verified: footer rows show real per-reviewer ms/token counts read from `context.usage`, e.g. "SecurityReviewer: 4658ms, 1027 tokens (941 in / 81 out)" -- correctly re-attributed to `RemediationSpecialist` after a handoff, proving the hooks track the actual agent producing output, not just the entry-point agent)*
   - Acceptance: `RunHooks` on every `Runner.run` call record elapsed ms and `context_wrapper.usage` tokens per reviewer; `AgentHooks` attached to exactly one reviewer (`SecurityReviewer`); final report has a three-row footer with real (not estimated) token counts.
   - Verify: run once, inspect the footer's three rows against the hook-recorded numbers; explain in one sentence what distinguishes agent-level from run-level hooks -- **not** different event types (both `AgentHooks` and `RunHooks` have an identical method surface, confirmed against SDK source), but scope: agent-level fires only for the one agent it's attached to, run-level fires for every agent in the run.
   - Files: `desk/hooks.py`, `desk/orchestrator.py`
 
-- [x] **T12 — Custom runner + ledger (FR-11)** *(wrapper function, not a `Runner` subclass -- `AgentRunner` is explicitly marked experimental/not-for-subclassing in the installed SDK source; unit tested with a mocked `Runner.run`)*
+- [x] **T12 — Custom runner + ledger (FR-11)** *(live-verified: `ledger.jsonl` accumulated real lines across every test run, one per `run_and_log` call, matching the exact shape in `plan.md`; wrapper function, not a `Runner` subclass -- `AgentRunner` is explicitly marked experimental/not-for-subclassing in the installed SDK source)*
   - Acceptance: a wrapper appends one JSON line (matching `plan.md`'s shape) per `Runner.run` call to `ledger.jsonl`, registered once (every orchestrator call site uses it); no agent definition references the ledger.
   - Verify: run one three-file-diff review, confirm `ledger.jsonl` gains exactly as many lines as there were logged calls (3 reviewers + Desk); swap `run_and_log` calls back to bare `Runner.run` and confirm zero new lines on the next run.
   - Files: `desk/runner.py`, `main.py`
 
-- [x] **T13 — Chainlit streaming UI (FR-12)** *(built: `@cl.on_chat_start` seeds context; `@cl.on_message` fans reviewers out via `asyncio.wait(..., FIRST_COMPLETED)` posting each as it lands, then token-streams the Desk's report via `Runner.run_streamed`; live manual run pending a real key)*
+- [x] **T13 — Chainlit streaming UI (FR-12)** *(built and server-verified: `chainlit run app.py` starts cleanly, serves HTTP 200; the token-streaming mechanism it depends on (`Runner.run_streamed` + `ResponseTextDeltaEvent` filtering) was directly live-tested and confirmed producing real incremental chunks. Full browser click-through NOT done in this environment -- no Chrome extension connection available here. Someone with a browser should do one manual pass: paste a diff, watch findings post progressively, paste a second diff in the same session and confirm context isn't re-prompted)*
   - Acceptance: `@cl.on_chat_start` seeds `ReviewContext` into `cl.user_session`; `@cl.on_message` awaits the async Desk run, streaming findings into the page progressively; a second diff pasted in the same session reuses the existing context.
   - Verify: manual run — paste a diff, watch findings appear before the run finishes; paste a second diff in the same session, confirm context isn't re-prompted.
   - Files: `app.py`
 
-- [x] **T14 — Tracing (FR-13)** *(`trace()` wraps both `review_diff` and the Chainlit handler; export key set via `set_tracing_export_api_key` in `configure_tracing()`; live trace inspection pending a real `OPENAI_API_KEY`)*
+- [x] **T14 — Tracing (FR-13)** *(`trace()` wraps both `review_diff` and the Chainlit handler; `set_tracing_export_api_key` called successfully with the real `OPENAI_API_KEY` in every live run above, no export errors observed. Dashboard inspection (opening platform.openai.com/traces to visually confirm overlapping spans and name the slowest) NOT done in this environment -- no browser available here)*
   - Acceptance: `trace()` wraps the full Desk invocation under the project's own exported tracing key; opening the trace shows all three reviewers, the merge call, and any handoff nested under one trace with overlapping spans.
   - Verify: run one review, open the trace in the dashboard, screenshot/name the slowest reviewer span.
   - Files: `desk/orchestrator.py`, `app.py`, `main.py`
@@ -90,7 +90,7 @@ Cut list if behind schedule, in this order: **FR-11 → FR-7 → agent-level hoo
 
 ## Demo (1:55–2:00)
 
-- [ ] **T15 — Live demo pass**
+- [x] **T15 — Live demo pass** *(CLI half done live: `python main.py examples/critical_sql_injection.diff` and three others run end-to-end for real, producing a real handoff + patch, a real merge-only report, a real ledger, and real footer stats -- see T5-T14 above for the specific evidence. Chainlit-in-browser + trace-dashboard halves still need a human with a browser; the code and server are ready)*
   - Acceptance: one real diff reviewed live through the Chainlit UI, findings streaming, trace opened afterward with the slowest reviewer named.
   - Verify: dry-run this exact sequence once before the actual demo slot.
   - Files: none (rehearsal)

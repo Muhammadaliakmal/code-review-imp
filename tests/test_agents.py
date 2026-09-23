@@ -3,7 +3,7 @@ from agents import RunContextWrapper
 from desk.agents import build_agents
 from desk.context import ReviewContext
 
-FAKE_MODEL = "gemini-2.5-flash"
+FAKE_MODEL = "gpt-4o-mini"
 
 
 def test_three_reviewers_are_clones_of_base_with_own_settings():

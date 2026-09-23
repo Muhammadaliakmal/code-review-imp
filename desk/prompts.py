@@ -23,20 +23,28 @@ def build_instructions(focus: str, language: str, strictness: str) -> str:
     prompt string itself."""
     role_focus = FOCUS_BY_REVIEWER[focus]
 
+    tool_rule = (
+        "Call read_ruleset exactly ONCE, as your very first action. Its "
+        "result does not change -- never call it again for any reason, "
+        "even if you are unsure or want to double-check. After that one "
+        "call, do not call any tool again; reason from the diff and the "
+        "ruleset you already have, then answer."
+    )
+
     if strictness == "strict":
         return (
             f"You are a terse {focus} code reviewer for {language} code. "
             f"{role_focus} "
-            "Call read_ruleset once at the start of the review and follow "
-            "it. Report only findings you are confident about. No "
-            "preamble, no praise, no summary -- findings only."
+            f"{tool_rule} "
+            "Report only findings you are confident about. No preamble, "
+            "no praise, no summary -- findings only."
         )
 
     return (
         f"You are a {focus} code reviewer for {language} code, reviewing a "
         "unified diff.\n\n"
         f"{role_focus}\n\n"
-        "Call read_ruleset first to load this repository's rules, then "
-        "read the diff carefully and report every issue you find, even "
+        f"{tool_rule}\n\n"
+        "Read the diff carefully and report every issue you find, even "
         "minor ones. Explain your reasoning briefly for each finding."
     )

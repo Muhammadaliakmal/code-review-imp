@@ -65,7 +65,7 @@ async def test_review_with_cheaper_override_does_not_mutate_agent_model(tmp_path
     diff_file = tmp_path / "sample.diff"
     diff_file.write_text("diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -1 +1 @@\n-x\n+y\n", encoding="utf-8")
 
-    security = SimpleNamespace(name="SecurityReviewer", model="gemini-2.5-flash")
+    security = SimpleNamespace(name="SecurityReviewer", model="gpt-4o-mini")
     agents = {"security_reviewer": security}
 
     declared_result = SimpleNamespace(final_output=[])
@@ -74,17 +74,17 @@ async def test_review_with_cheaper_override_does_not_mutate_agent_model(tmp_path
 
     with patch("desk.orchestrator.Runner.run", new=mock_run):
         declared, override = await review_with_cheaper_override(
-            str(diff_file), context=None, agents=agents, cheaper_model="gemini-2.0-flash"
+            str(diff_file), context=None, agents=agents, cheaper_model="gpt-3.5-turbo"
         )
 
     assert declared is declared_result
     assert override is override_result
-    assert security.model == "gemini-2.5-flash"  # never mutated
+    assert security.model == "gpt-4o-mini"  # never mutated
 
     first_call_kwargs = mock_run.call_args_list[0].kwargs
     second_call_kwargs = mock_run.call_args_list[1].kwargs
     assert "run_config" not in first_call_kwargs or first_call_kwargs.get("run_config") is None
-    assert second_call_kwargs["run_config"].model == "gemini-2.0-flash"
+    assert second_call_kwargs["run_config"].model == "gpt-3.5-turbo"
 
 
 @pytest.mark.asyncio

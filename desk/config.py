@@ -2,11 +2,8 @@ import os
 import sys
 
 from agents import set_tracing_export_api_key
-from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
-from openai import AsyncOpenAI
 
-GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
-GEMINI_MODEL_NAME = "gemini-2.5-flash"
+MODEL_NAME = "gpt-4o-mini"
 
 
 def require_env(name: str) -> str:
@@ -18,18 +15,17 @@ def require_env(name: str) -> str:
     return value
 
 
-def build_gemini_model() -> OpenAIChatCompletionsModel:
-    """The one place gemini-2.5-flash is configured -- every agent
-    points at this, satisfying FR-1's "configured on the agent"
-    (constitution.md §1)."""
-    api_key = require_env("GEMINI_API_KEY")
-    client = AsyncOpenAI(api_key=api_key, base_url=GEMINI_BASE_URL)
-    return OpenAIChatCompletionsModel(model=GEMINI_MODEL_NAME, openai_client=client)
+def configure_openai() -> str:
+    """The one place the model name is set -- every agent points at
+    this string, satisfying FR-1's "configured on the agent"
+    (constitution.md §1). The SDK's default model provider reads
+    OPENAI_API_KEY from the environment itself, so this just fails
+    fast if it's missing rather than letting a later call fail
+    obscurely."""
+    require_env("OPENAI_API_KEY")
+    return MODEL_NAME
 
 
 def configure_tracing() -> None:
-    """FR-13: tracing exported under the project's own key, not left
-    to an implicit default."""
-    tracing_key = os.environ.get("OPENAI_API_KEY")
-    if tracing_key:
-        set_tracing_export_api_key(tracing_key)
+    """FR-13: tracing exported under the project's own key."""
+    set_tracing_export_api_key(require_env("OPENAI_API_KEY"))

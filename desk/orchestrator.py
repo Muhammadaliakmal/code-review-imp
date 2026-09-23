@@ -8,8 +8,11 @@ from desk.hooks import FooterRunHooks
 from desk.models import Finding
 from desk.runner import run_and_log
 
-MAX_TURNS = 8  # generous enough for read-ruleset + reason + respond,
-# tight enough to catch a reviewer looping on tool calls (FR-9).
+MAX_TURNS = 12  # generous enough for read-ruleset + reason + respond,
+# tight enough to catch a reviewer looping on tool calls (FR-9). Raised
+# from an initial 8 after live testing against gpt-4o-mini showed
+# occasional (non-deterministic, not reviewer-specific) runs taking
+# more turns to converge on structured list[Finding] output.
 
 
 def _serialize_findings(reviewer_name: str, findings: list[Finding]) -> str:
@@ -98,7 +101,28 @@ async def review_diff(diff_path: str, context, agents: dict) -> str:
                 _serialize_findings("style", style_result.final_output),
             ]
         )
-        desk_input = f"Diff:\n{diff_text}\n\nCombined findings:\n{combined_findings}"
+
+        # A small model reading free-form finding text is unreliable at
+        # the literal "is any severity exactly 'critical'" check -- it
+        # tends to escalate on alarming *wording* (e.g. "security issue"
+        # inside a minor finding's message) regardless of instructions.
+        # So the orchestrator computes the real answer once, from the
+        # actual Finding objects, and hands it to the Desk as a directive
+        # instead of asking the model to re-derive it from prose. The
+        # Desk still calls merge_findings itself (this call is separate
+        # and only feeds the directive) -- FR-6's "Desk calls merge as a
+        # tool" architecture is unchanged.
+        precheck_merge = await run_and_log(
+            agents["merge_specialist"], combined_findings, context=context, hooks=hooks, max_turns=MAX_TURNS
+        )
+        has_critical = any(f.severity == "critical" for f in precheck_merge.final_output)
+        directive = (
+            f"PRE-COMPUTED RESULT (ground truth, do not re-derive): "
+            f"has_critical_security_finding = {has_critical}. "
+            f"{'Hand off to RemediationSpecialist.' if has_critical else 'Do NOT hand off -- render the report yourself.'}"
+        )
+
+        desk_input = f"{directive}\n\nDiff:\n{diff_text}\n\nCombined findings:\n{combined_findings}"
 
         try:
             desk_result = await run_and_log(

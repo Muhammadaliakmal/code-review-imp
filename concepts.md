@@ -4,9 +4,9 @@ Reference map from the fundamentals guide's 21 parts (0–20) to what each one i
 
 > Note on the source table's `Concept coverage` header: it lists a concept once and forces it against exactly one FR — that's a "this is where you must demonstrate it," not "this is the only place it's used." Several concepts (context, structured output, tracing) touch nearly every FR in practice.
 
-## Part 0–2 — Setup, keys, Gemini
+## Part 0–2 — Setup, keys, OpenAI
 **Forced by: FR-1**
-`.env` holds the Gemini key; the SDK's model provider is pointed at `gemini-2.5-flash`. This is the first thing that has to work — no agent runs without it. Constitution §2 (secrets in `.env` only, fail loudly but cleanly at startup) is this concept's safety rule.
+`.env` holds `OPENAI_API_KEY`; the SDK's default model provider reads it automatically, pointed at `gpt-4o-mini`. (This project's source brief names Gemini -- swapped to OpenAI at the project owner's request since an OpenAI key was available; see constitution.md §1 for the full note. The mechanism this Part is testing -- key in `.env`, fail-fast at startup, model configured on the agent -- is identical regardless of provider.) This is the first thing that has to work — no agent runs without it. Constitution §2 (secrets in `.env` only, fail loudly but cleanly at startup) is this concept's safety rule.
 
 ## Part 3 — Runner, asyncio, streaming
 **Forced by: FR-1**
@@ -15,7 +15,7 @@ Reference map from the fundamentals guide's 21 parts (0–20) to what each one i
 ## Part 4 — Model configuration
 **Forced by: FR-1 (agent level), FR-7 (run level)**
 Two configuration surfaces, deliberately kept separate:
-- **Agent level** — every `Agent(...)` declares its own `model="gemini-2.5-flash"`. This is the default for every reviewer.
+- **Agent level** — every `Agent(...)` declares its own `model="gpt-4o-mini"`. This is the default for every reviewer.
 - **Run level** — **not** a `Runner.run(model=...)` kwarg (that param doesn't exist). It's `Runner.run(agent, ..., run_config=RunConfig(model=<override>))`. This is FR-7's cheaper second opinion, and it's also the mechanism that proves the two levels are actually independent (same agent, two runs, two models, `agent.model` unchanged throughout). Verified against the installed `openai-agents` v0.19.1 source — worth stating this correction if asked, since the naive guess (`model=` directly on `Runner.run`) is wrong.
 
 ## Part 5 — Tools
@@ -49,6 +49,8 @@ Wait — cross-check: FR-13 is tracing, not instructions. In this project, dynam
 ## Part 12 — Handoffs
 **Forced by: FR-6 (remediation half)**
 Shipped as `Agent(handoffs=[remediation_specialist])` — a bare `Agent` object, not the `handoff(...)` wrapper function. The wrapper is only needed for a typed `input_type`, an `on_handoff` callback, or name/description overrides; none of those are required here (a typed handoff input — "state which finding triggered it" — is explicitly the "if you finish early" stretch goal, not the baseline). The Desk's instructions tell it when to hand off (critical + security-shaped finding); the SDK doesn't gate that decision itself. Unlike `as_tool`, control does *not* return to the Desk — the Remediation agent takes the conversation and talks to the user directly. This asymmetry (tool = call-and-return, handoff = transfer) is the two-sentence rationale `spec.md` asks for.
+
+**Live-testing finding worth citing in the viva:** the SDK correctly exposes handoffs as tool-calls the model can invoke, but *deciding when* to invoke one is entirely the model's own judgment — nothing in the SDK enforces "only hand off when severity is literally critical." Against `gpt-4o-mini`, letting the Desk read merged-findings prose and judge severity itself produced false-positive handoffs on `minor`/`major` findings that merely used alarming wording. See `plan.md`'s "Handoff-decision reliability" note for the fix (a Python-computed directive, not more prompt engineering) — this is the practical gap between "the SDK supports handoffs" and "the model reliably decides to use one correctly."
 
 ## Part 13 — Advanced tool control
 **Forced by: FR-9**

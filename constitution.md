@@ -4,9 +4,11 @@ Non-negotiable rules for this build. Nothing in `plan.md` or `tasks.md` may cont
 
 ## 1. Provider and configuration level
 
-- The model is `gemini-2.5-flash`.
+> **Deviation from the source brief:** the original spec (`rjjxgg.pdf`) names `gemini-2.5-flash` as the provider. This build uses OpenAI (`gpt-4o-mini`) instead, at the project owner's explicit request, because a usable OpenAI key was available and a Gemini key was not. Every FR/NFR that referenced "the model is configured on the agent" still applies identically -- only the provider name changed, not the mechanism. If this project is graded against the literal PDF brief, this substitution should be called out at the demo; the architecture and every done-condition are otherwise unaffected.
+
+- The model is `gpt-4o-mini`.
 - It is configured **on the agent** (`Agent(..., model=...)` / the agent's `model_settings`), never as a global/default client and never passed ad hoc at call sites.
-- Exception: FR-7's cheaper second opinion overrides the model **at the run level** (`Runner.run(..., model=...)` or run-scoped settings) without editing any agent definition. This is the one sanctioned place a model differs from what the agent declares.
+- Exception: FR-7's cheaper second opinion overrides the model **at the run level** (`Runner.run(..., run_config=RunConfig(model=...))`) without editing any agent definition. This is the one sanctioned place a model differs from what the agent declares.
 - No code sets a global default client. Each agent is self-describing.
 
 ## 2. Secrets

@@ -1,12 +1,12 @@
 import asyncio
 
 import chainlit as cl
-from agents import ItemHelpers, MaxTurnsExceeded, OutputGuardrailTripwireTriggered, Runner, trace
+from agents import MaxTurnsExceeded, OutputGuardrailTripwireTriggered, Runner, trace
 from dotenv import load_dotenv
 from openai.types.responses import ResponseTextDeltaEvent
 
 from desk.agents import build_agents
-from desk.config import build_gemini_model, configure_tracing
+from desk.config import configure_openai, configure_tracing
 from desk.context import ReviewContext
 from desk.diff import split_diff
 from desk.hooks import FooterRunHooks
@@ -15,7 +15,7 @@ from desk.runner import run_and_log
 
 load_dotenv()
 configure_tracing()
-_MODEL = build_gemini_model()
+_MODEL = configure_openai()
 _AGENTS = build_agents(_MODEL)
 
 REVIEWER_KEYS = ("security_reviewer", "tests_reviewer", "style_reviewer")
