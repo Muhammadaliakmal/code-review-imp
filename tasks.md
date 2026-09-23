@@ -32,32 +32,32 @@ Cut list if behind schedule, in this order: **FR-11 → FR-7 → agent-level hoo
 
 ## Phase 2 — Fan out (1:05–1:40)
 
-- [ ] **T5 — Clone the three reviewers (FR-5)**
+- [x] **T5 — Clone the three reviewers (FR-5)** *(code + unit test done; live wall-clock numbers pending a real `GEMINI_API_KEY`)*
   - Acceptance: `SecurityReviewer`, `TestsReviewer`, `StyleReviewer` are `BaseReviewer.clone(...)` with distinct `instructions`/`model_settings`; running all three concurrently via `asyncio.gather` on the same diff.
   - Verify: time the `gather` call vs. the sum of three sequential `Runner.run` calls on the same diff; print both numbers; concurrent time must be close to the single slowest run, not the sum.
   - Files: `desk/agents.py`, `desk/orchestrator.py`
 
-- [ ] **T6 — Merge specialist as a tool (FR-6, merge half)**
+- [x] **T6 — Merge specialist as a tool (FR-6, merge half)** *(wired via `as_tool`; live dedup behavior pending a real key)*
   - Acceptance: `MergeSpecialist.as_tool(...)` is callable by the Desk; given three overlapping `Finding` lists, returns one deduplicated, severity-ordered list; the Desk retains the conversation after the call.
   - Verify: feed three lists with one duplicate finding across reviewers, confirm the merged output has it once, ordered critical → major → minor.
   - Files: `desk/agents.py`, `desk/orchestrator.py`
 
-- [ ] **T7 — Remediation specialist via handoff (FR-6, remediation half)**
+- [x] **T7 — Remediation specialist via handoff (FR-6, remediation half)** *(wired via `handoffs=[...]`; live handoff firing pending a real key)*
   - Acceptance: when the merged findings contain a `critical` + security-tagged finding, the Desk hands off to `RemediationSpecialist`, which proposes a patch to the user; on a diff with no critical finding, no handoff occurs.
   - Verify: run once with a planted critical security finding (both paths fire), once with a clean diff (handoff does not fire); two-sentence tool-vs-handoff justification recorded in `spec.md` (Architecture rationale section).
   - Files: `desk/agents.py`, `desk/orchestrator.py`
 
-- [ ] **T8 — Run-level cheaper override (FR-7)**
-  - Acceptance: the same `SecurityReviewer` object is run twice — once with its declared model, once with `Runner.run(..., model=<cheaper>)` — with zero edits to the agent's `model=` between calls.
+- [x] **T8 — Run-level cheaper override (FR-7)** *(`review_with_cheaper_override` uses `RunConfig(model=...)`, not `Runner.run(model=...)` -- confirmed against SDK source; live run pending a real key)*
+  - Acceptance: the same `SecurityReviewer` object is run twice — once with its declared model, once with a run-level override — with zero edits to the agent's `model=` between calls.
   - Verify: print both `RunResult`s' model identifiers from `result` metadata, confirm the agent definition's `model` attribute is unchanged after both calls.
   - Files: `desk/orchestrator.py`
 
-- [ ] **T9 — Output guardrail (FR-8)**
+- [x] **T9 — Output guardrail (FR-8)** *(heuristic + guardrail wiring unit tested; live refusal-vs-pass-through pending a real key)*
   - Acceptance: `@output_guardrail` on the Desk's final report catches credential-shaped strings; a planted fake key triggers a refusal message, not a crash; a clean diff's report passes untouched.
   - Verify: run once against a diff with a fake `AKIA...`-style key (assert refusal), once against a clean diff (assert normal report); point at the `try/except OutputGuardrailTripwireTriggered` line.
   - Files: `desk/guardrails.py`, `desk/orchestrator.py`
 
-- [ ] **T10 — Forced tool, tool failure handling, turn ceiling (FR-9)**
+- [x] **T10 — Forced tool, tool failure handling, turn ceiling (FR-9)** *(tool_choice="read_ruleset" confirmed via SDK source, not just "required"; ruleset fallback unit tested; live turn-ceiling behavior pending a real key)*
   - Acceptance: `SecurityReviewer` cannot complete a turn without calling `read_ruleset` (forced tool choice); deleting the ruleset file still yields a finished review with a fallback message; every `Runner.run` call has `max_turns` set, `MaxTurnsExceeded` is caught and reported as a partial review.
   - Verify: run with the ruleset file deleted — confirm the review still completes with a "using defaults" note; state the chosen `max_turns` value and reasoning in `plan.md` (already recorded — confirm it matches the shipped code).
   - Files: `desk/agents.py`, `desk/tools.py`, `desk/orchestrator.py`
@@ -66,25 +66,25 @@ Cut list if behind schedule, in this order: **FR-11 → FR-7 → agent-level hoo
 
 ## Phase 3 — Observe and ship (1:40–1:55)
 
-- [ ] **T11 — Latency/token hooks + footer (FR-10)**
+- [x] **T11 — Latency/token hooks + footer (FR-10)** *(hooks + footer rendering unit tested with fake stats; live token counts pending a real key)*
   - Acceptance: `RunHooks` on every `Runner.run` call record elapsed ms and `context_wrapper.usage` tokens per reviewer; `AgentHooks` attached to exactly one reviewer (`SecurityReviewer`); final report has a three-row footer with real (not estimated) token counts.
   - Verify: run once, inspect the footer's three rows against the hook-recorded numbers; explain in one sentence what the agent-level hook sees (tool-call-level events for that one agent) that the run-level hook does not (only agent-start/agent-end).
   - Files: `desk/hooks.py`, `desk/orchestrator.py`
 
-- [ ] **T12 — Custom runner + ledger (FR-11)** *(first cut if behind)*
-  - Acceptance: a `Runner` subclass/wrapper appends one JSON line (matching `plan.md`'s shape) per `Runner.run` call to `ledger.jsonl`, registered once at startup; no agent definition references the ledger.
-  - Verify: run one three-file-diff review, confirm `ledger.jsonl` gains exactly as many lines as there were `Runner.run` calls (3 reviewers + merge + any handoff); comment out the registration call and confirm zero new lines on the next run.
+- [x] **T12 — Custom runner + ledger (FR-11)** *(wrapper function, not a `Runner` subclass -- `AgentRunner` is explicitly marked experimental/not-for-subclassing in the installed SDK source; unit tested with a mocked `Runner.run`)*
+  - Acceptance: a wrapper appends one JSON line (matching `plan.md`'s shape) per `Runner.run` call to `ledger.jsonl`, registered once (every orchestrator call site uses it); no agent definition references the ledger.
+  - Verify: run one three-file-diff review, confirm `ledger.jsonl` gains exactly as many lines as there were logged calls (3 reviewers + Desk); swap `run_and_log` calls back to bare `Runner.run` and confirm zero new lines on the next run.
   - Files: `desk/runner.py`, `main.py`
 
-- [ ] **T13 — Chainlit streaming UI (FR-12)**
-  - Acceptance: `@cl.on_chat_start` seeds `ReviewContext` into `cl.user_session`; `@cl.on_message` `await`s the async Desk run via `Runner.run_streamed`, streaming findings into the page progressively; a second diff pasted in the same session reuses the existing context.
+- [x] **T13 — Chainlit streaming UI (FR-12)** *(built: `@cl.on_chat_start` seeds context; `@cl.on_message` fans reviewers out via `asyncio.wait(..., FIRST_COMPLETED)` posting each as it lands, then token-streams the Desk's report via `Runner.run_streamed`; live manual run pending a real key)*
+  - Acceptance: `@cl.on_chat_start` seeds `ReviewContext` into `cl.user_session`; `@cl.on_message` awaits the async Desk run, streaming findings into the page progressively; a second diff pasted in the same session reuses the existing context.
   - Verify: manual run — paste a diff, watch findings appear before the run finishes; paste a second diff in the same session, confirm context isn't re-prompted.
   - Files: `app.py`
 
-- [ ] **T14 — Tracing (FR-13)**
+- [x] **T14 — Tracing (FR-13)** *(`trace()` wraps both `review_diff` and the Chainlit handler; export key set via `set_tracing_export_api_key` in `configure_tracing()`; live trace inspection pending a real `OPENAI_API_KEY`)*
   - Acceptance: `trace()` wraps the full Desk invocation under the project's own exported tracing key; opening the trace shows all three reviewers, the merge call, and any handoff nested under one trace with overlapping spans.
   - Verify: run one review, open the trace in the dashboard, screenshot/name the slowest reviewer span.
-  - Files: `desk/orchestrator.py`, `main.py`
+  - Files: `desk/orchestrator.py`, `app.py`, `main.py`
 
 ---
 

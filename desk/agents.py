@@ -71,8 +71,11 @@ def build_agents(model):
             "against it. Propose a minimal, concrete patch that fixes the "
             "finding. Explain briefly why the original code was unsafe. "
             "You are talking directly to the developer -- be specific and "
-            "actionable, not generic advice."
+            "actionable, not generic advice. Never quote the literal "
+            "credential, token, or password itself -- describe it "
+            "without repeating its value."
         ),
+        output_guardrails=[no_secrets_guardrail],
         model=model,
     )
 
