@@ -13,7 +13,7 @@ Cut list if behind schedule, in this order: **FR-11 → FR-7 → agent-level hoo
   - Verify: unit test with a 2-file fixture diff and an empty-string diff.
   - Files: `desk/diff.py`, `tests/test_diff.py`
 
-- [ ] **T2 — `ReviewContext` + context-reading tool (FR-2)**
+- [ ] **T2 — `ReviewContext` + context-reading tool (FR-2)** *(context dataclass + ruleset loader done; `@function_tool` wrapper pending)*
   - Acceptance: `ReviewContext` dataclass matches `plan.md` exactly; a `read_ruleset` tool reads `ruleset_id`/`repo` only via `RunContextWrapper`, takes no repo/ruleset string as a literal parameter; generated tool schema has no such parameter.
   - Verify: print the tool's generated JSON schema and confirm no wrapper field; `grep -ri` the assembled prompt string for the repo name — zero hits.
   - Files: `desk/context.py`, `desk/tools.py`
