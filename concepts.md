@@ -16,7 +16,7 @@ Reference map from the fundamentals guide's 21 parts (0–20) to what each one i
 **Forced by: FR-1 (agent level), FR-7 (run level)**
 Two configuration surfaces, deliberately kept separate:
 - **Agent level** — every `Agent(...)` declares its own `model="gemini-2.5-flash"`. This is the default for every reviewer.
-- **Run level** — `Runner.run(agent, ..., model=<override>)` swaps the model for one call only, without touching the agent object. This is FR-7's cheaper second opinion, and it's also the mechanism that proves the two levels are actually independent (same agent, two runs, two models, `agent.model` unchanged throughout).
+- **Run level** — **not** a `Runner.run(model=...)` kwarg (that param doesn't exist). It's `Runner.run(agent, ..., run_config=RunConfig(model=<override>))`. This is FR-7's cheaper second opinion, and it's also the mechanism that proves the two levels are actually independent (same agent, two runs, two models, `agent.model` unchanged throughout). Verified against the installed `openai-agents` v0.19.1 source — worth stating this correction if asked, since the naive guess (`model=` directly on `Runner.run`) is wrong.
 
 ## Part 5 — Tools
 **Forced by: FR-2**
@@ -48,11 +48,11 @@ Wait — cross-check: FR-13 is tracing, not instructions. In this project, dynam
 
 ## Part 12 — Handoffs
 **Forced by: FR-6 (remediation half)**
-`handoff(remediation_specialist, ...)`, triggered when the merged findings contain a critical security item. Unlike `as_tool`, control does *not* return to the Desk — the Remediation agent takes the conversation and talks to the user directly. This asymmetry (tool = call-and-return, handoff = transfer) is the two-sentence rationale `spec.md` asks for.
+Shipped as `Agent(handoffs=[remediation_specialist])` — a bare `Agent` object, not the `handoff(...)` wrapper function. The wrapper is only needed for a typed `input_type`, an `on_handoff` callback, or name/description overrides; none of those are required here (a typed handoff input — "state which finding triggered it" — is explicitly the "if you finish early" stretch goal, not the baseline). The Desk's instructions tell it when to hand off (critical + security-shaped finding); the SDK doesn't gate that decision itself. Unlike `as_tool`, control does *not* return to the Desk — the Remediation agent takes the conversation and talks to the user directly. This asymmetry (tool = call-and-return, handoff = transfer) is the two-sentence rationale `spec.md` asks for.
 
 ## Part 13 — Advanced tool control
 **Forced by: FR-9**
-`ModelSettings(tool_choice="required")` to force `SecurityReviewer` into calling `read_ruleset`; per-tool failure handling so a missing ruleset file degrades to "using defaults" instead of raising; `max_turns` as the ceiling, with `MaxTurnsExceeded` caught and turned into a partial-review report. Three separate control knobs, all exercised by one FR.
+`ModelSettings(tool_choice="read_ruleset")` — the tool's exact name, not the generic `"required"`. That distinction matters: `"required"` only forces *some* tool call, not this specific one; naming the tool is what actually satisfies "no choice but to call it." Also in this FR: per-tool failure handling so a missing ruleset file degrades to "using defaults" instead of raising; `max_turns=8` as the ceiling, with `MaxTurnsExceeded` caught and turned into a partial-review report. Three separate control knobs, all exercised by one FR.
 
 ## Part 14 — Structured output
 **Forced by: FR-3**
@@ -64,19 +64,19 @@ Wait — cross-check: FR-13 is tracing, not instructions. In this project, dynam
 
 ## Part 16 — Lifecycle hooks
 **Forced by: FR-10**
-`AgentHooks` subclass attached to exactly one agent (`SecurityReviewer`, per FR-10's own wording) — sees that agent's tool-call-level events (`on_tool_start`/`on_tool_end`) that no other reviewer's hooks see.
+`AgentHooks` subclass attached to exactly one agent (`SecurityReviewer`, per FR-10's own wording). Correction after checking the installed SDK source: `AgentHooks` and `RunHooks` have an *identical method surface* — both get `on_tool_start`/`on_tool_end`/`on_start`(`on_agent_start`)/`on_end`(`on_agent_end`)/`on_handoff`/`on_llm_start`/`on_llm_end`. The real difference isn't which events exist, it's **scope**: `AgentHooks` only ever fires for the one agent it's attached to.
 
 ## Part 17 — Run lifecycle hooks
 **Forced by: FR-10** *(alongside Part 16 — the FR pairs both hook levels deliberately, per the same done-condition asking what agent-level hooks see that run-level hooks don't)*
-`RunHooks` attached to every `Runner.run` call — sees `on_agent_start`/`on_agent_end` across *all* agents in that run (all three reviewers, the merge tool call), used to measure elapsed time and read `usage` for the token footer. Run-level hooks see breadth across agents; agent-level hooks see depth within one agent's tool calls.
+`RunHooks` attached to every `Runner.run` call — sees the same event types as `AgentHooks`, but across *every* agent in that run (all three reviewers, the merge tool call, any handoff target), used to measure elapsed time and read `context.usage` for the token footer. So the accurate FR-10 answer isn't "agent-level sees tool calls, run-level doesn't" — it's "run-level sees breadth (every agent), agent-level sees the same depth of event but scoped to one agent." Get this distinction right; the naive answer (different event types) is wrong and provably so from the source.
 
 ## Part 18 — Custom runners
 **Forced by: The whole project — you are driving one**
-A `Runner` subclass/wrapper is the mechanism behind FR-11's ledger: registered once at startup, invisible to every agent definition, appending one line to `ledger.jsonl` per `Runner.run` call. The source spec's own framing ("you are driving one") is a reminder that every `Runner.run(...)` call anywhere in the project — not just the ledger's — goes through this same customized runner, which is why removing *one* registration line is enough to turn the ledger off everywhere at once.
+Correction after checking the installed SDK source, before any code was written against the wrong assumption: `Runner.run`/`run_sync`/`run_streamed` are classmethods that delegate to a module-level `AgentRunner` singleton — but that class's own docstring says *"experimental and not part of the public API... should not be used directly or subclassed."* So this project's "custom runner" (`desk/runner.py::run_and_log`) is a **wrapper function**, not a `Runner` subclass: it calls `Runner.run(...)`, times it, and appends the ledger line. `plan.md` originally described a subclass and was corrected once this was verified. The source spec's framing ("you are driving one") still holds at the *call-site* level — every orchestrator call goes through `run_and_log` instead of bare `Runner.run`, so swapping that one wrapper back out is what "turns the ledger off everywhere at once," not un-registering a subclass.
 
 ## Part 19 — Chainlit
 **Forced by: FR-12**
-`@cl.on_chat_start` seeds `cl.user_session` with a `ReviewContext`; `@cl.on_message` awaits `Runner.run_streamed` and pushes findings into a `cl.Message` as they arrive rather than buffering until the run completes. Session reuse (second diff, same context) is the concrete thing FR-12 checks for beyond "it streams."
+`@cl.on_chat_start` seeds `cl.user_session` with a `ReviewContext`. `@cl.on_message` does two distinct kinds of "progressive": (1) the three reviewers run concurrently via `asyncio.wait(..., return_when=FIRST_COMPLETED)`, so each reviewer's findings post to the page the moment *that* reviewer finishes, not after all three complete; (2) the Desk's final report is genuinely token-streamed via `Runner.run_streamed()`, iterating `stream_events()` and filtering for `RawResponsesStreamEvent` where `.data` is a `ResponseTextDeltaEvent`, pushing `.delta` into `cl.Message.stream_token(...)`. Two different SDK mechanisms for two different kinds of "arriving progressively" — one across concurrent agents, one within a single agent's text output. Session reuse (second diff, same context) is the concrete thing FR-12 checks for beyond "it streams."
 
 ## Part 20 — Practice with an agent CLI
 **Forced by: —** *(not tied to a specific FR in the source table; this is the "you built one of these before, conversationally" baseline the project assumes on entry, not a requirement it tests)*

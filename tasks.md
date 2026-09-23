@@ -68,7 +68,7 @@ Cut list if behind schedule, in this order: **FR-11 → FR-7 → agent-level hoo
 
 - [x] **T11 — Latency/token hooks + footer (FR-10)** *(hooks + footer rendering unit tested with fake stats; live token counts pending a real key)*
   - Acceptance: `RunHooks` on every `Runner.run` call record elapsed ms and `context_wrapper.usage` tokens per reviewer; `AgentHooks` attached to exactly one reviewer (`SecurityReviewer`); final report has a three-row footer with real (not estimated) token counts.
-  - Verify: run once, inspect the footer's three rows against the hook-recorded numbers; explain in one sentence what the agent-level hook sees (tool-call-level events for that one agent) that the run-level hook does not (only agent-start/agent-end).
+  - Verify: run once, inspect the footer's three rows against the hook-recorded numbers; explain in one sentence what distinguishes agent-level from run-level hooks -- **not** different event types (both `AgentHooks` and `RunHooks` have an identical method surface, confirmed against SDK source), but scope: agent-level fires only for the one agent it's attached to, run-level fires for every agent in the run.
   - Files: `desk/hooks.py`, `desk/orchestrator.py`
 
 - [x] **T12 — Custom runner + ledger (FR-11)** *(wrapper function, not a `Runner` subclass -- `AgentRunner` is explicitly marked experimental/not-for-subclassing in the installed SDK source; unit tested with a mocked `Runner.run`)*
