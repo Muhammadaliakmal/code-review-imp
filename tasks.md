@@ -8,7 +8,7 @@ Cut list if behind schedule, in this order: **FR-11 → FR-7 → agent-level hoo
 
 ## Phase 1 — Intake and one reviewer (0:35–1:05)
 
-- [ ] **T1 — Diff reader + splitter (FR-1)**
+- [x] **T1 — Diff reader + splitter (FR-1)**
   - Acceptance: `read_diff(path)` returns raw text or an error message (never raises); `split_diff(text)` returns one `DiffChunk` per file; a two-file diff produces exactly two chunks; empty/malformed input returns a message, not a traceback.
   - Verify: unit test with a 2-file fixture diff and an empty-string diff.
   - Files: `desk/diff.py`, `tests/test_diff.py`
